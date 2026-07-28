@@ -12,6 +12,7 @@
 - 设备重启、系统时间/时区变化、应用升级后自动恢复提醒。
 - Android 13+ 通知权限与 Android 12+ “闹钟和提醒”特殊权限引导。
 - 公历与农历生日同一天时合并成一条通知。
+- 每天检查 GitHub Releases；默认仅在 Wi-Fi 下自动下载新版，完成 SHA-256 校验后提醒安装。
 
 ## 日期规则
 
@@ -26,11 +27,19 @@
 2. 等待 Gradle 同步完成。
 3. 运行 `./gradlew assembleDebug`，APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
 
-仓库中还附带了本次已验证并签名的 debug APK：`build/outputs/BirthdayReminder-debug.apk`。
+正式 APK 在仓库的 Releases 页面下载。Android 会要求用户确认安装；普通应用无法静默覆盖升级。
 
 最低支持 Android 7.0（API 24），目标版本 Android 14（API 34）。
 
-当前版本：1.1.1。
+当前版本：1.2.0。
+
+## 发布新版本
+
+1. 修改 `app/build.gradle.kts` 中的 `versionCode` 和 `versionName`。
+2. 合并代码并创建与版本号一致的标签，例如 `v1.2.0`。
+3. 推送标签后，GitHub Actions 会测试、使用仓库 Secrets 中的发布密钥签名，并自动创建带 APK 的 Release。
+
+发布签名密钥不会提交到仓库。必须永久安全备份同一份密钥；Android 只允许使用相同签名覆盖安装后续版本。
 
 ## 系统限制
 

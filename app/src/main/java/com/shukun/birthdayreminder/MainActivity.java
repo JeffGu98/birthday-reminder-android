@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationManager;
+import android.app.DownloadManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -35,6 +36,12 @@ import com.shukun.birthdayreminder.model.BirthdayPerson;
 import com.shukun.birthdayreminder.notify.NotificationHelper;
 import com.shukun.birthdayreminder.util.SolarDate;
 import com.shukun.birthdayreminder.util.SolarDateRules;
+import com.shukun.birthdayreminder.update.UpdateInfo;
+import com.shukun.birthdayreminder.update.UpdateInstallerActivity;
+import com.shukun.birthdayreminder.update.UpdateManager;
+import com.shukun.birthdayreminder.update.UpdateNotificationHelper;
+import com.shukun.birthdayreminder.update.UpdatePreferences;
+import com.shukun.birthdayreminder.update.UpdateScheduler;
 
 import java.util.Calendar;
 import java.util.List;
@@ -59,6 +66,9 @@ public final class MainActivity extends Activity {
         scheduler = new ReminderScheduler(this);
         lunarService = new LunarCalendarService();
         NotificationHelper.createChannel(this);
+        UpdateNotificationHelper.createChannel(this);
+        UpdateManager.cleanupInstalledUpdate(this);
+        UpdateScheduler.schedule(this);
         render();
     }
 
@@ -104,6 +114,8 @@ public final class MainActivity extends Activity {
         content.addView(subtitle, marginParams(0, 0, 0, 20));
 
         content.addView(buildPermissionCard(), marginParams(0, 0, 0, 18));
+
+        content.addView(buildUpdateCard(), marginParams(0, 0, 0, 18));
 
         Button addButton = new Button(this);
         addButton.setText("＋  添加生日");
@@ -195,6 +207,103 @@ public final class MainActivity extends Activity {
         body.setGravity(Gravity.CENTER);
         empty.addView(body);
         return empty;
+    }
+
+    private View buildUpdateCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setBackgroundResource(R.drawable.bg_card);
+
+        TextView heading = text("软件更新", 15, getColor(R.color.text_primary), Typeface.BOLD);
+        card.addView(heading);
+
+        long downloadId = UpdatePreferences.downloadId(this);
+        int status = UpdateManager.downloadStatus(this, downloadId);
+        boolean ready = status == DownloadManager.STATUS_SUCCESSFUL
+                && UpdatePreferences.isVerified(this);
+        String detail;
+        if (ready) {
+            detail = "版本 " + UpdatePreferences.downloadVersion(this) + " 已下载并通过安全校验。";
+        } else if (status == DownloadManager.STATUS_PENDING
+                || status == DownloadManager.STATUS_RUNNING) {
+            detail = "正在下载版本 " + UpdatePreferences.downloadVersion(this) + "。";
+        } else {
+            detail = "当前版本 " + BuildConfig.VERSION_NAME + "，每天自动检查 GitHub Releases。";
+        }
+        TextView body = text(detail, 13, getColor(R.color.text_secondary), Typeface.NORMAL);
+        card.addView(body, marginParams(0, 5, 0, 6));
+
+        Switch autoDownload = new Switch(this);
+        autoDownload.setText("发现新版后自动下载");
+        autoDownload.setTextColor(getColor(R.color.text_primary));
+        autoDownload.setChecked(UpdatePreferences.autoDownload(this));
+        autoDownload.setOnCheckedChangeListener((button, checked) -> {
+            UpdatePreferences.setAutoDownload(this, checked);
+            render();
+        });
+        card.addView(autoDownload);
+
+        Switch wifiOnly = new Switch(this);
+        wifiOnly.setText("仅在 Wi-Fi 下自动下载");
+        wifiOnly.setTextColor(getColor(R.color.text_primary));
+        wifiOnly.setChecked(UpdatePreferences.wifiOnly(this));
+        wifiOnly.setEnabled(UpdatePreferences.autoDownload(this));
+        wifiOnly.setOnCheckedChangeListener((button, checked) ->
+                UpdatePreferences.setWifiOnly(this, checked));
+        card.addView(wifiOnly);
+
+        Button action = compactButton(ready ? "安装已下载版本" : "立即检查更新");
+        if (ready) {
+            action.setOnClickListener(view -> startActivity(
+                    new Intent(this, UpdateInstallerActivity.class)
+                            .putExtra(UpdateInstallerActivity.EXTRA_DOWNLOAD_ID, downloadId)));
+        } else {
+            action.setOnClickListener(view -> checkForUpdates(action));
+        }
+        card.addView(action, wrapParams(Gravity.START));
+        return card;
+    }
+
+    private void checkForUpdates(Button button) {
+        button.setEnabled(false);
+        button.setText("正在检查…");
+        UpdateManager.checkAsync(this, (update, error) -> runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            button.setEnabled(true);
+            button.setText("立即检查更新");
+            if (error != null) {
+                Toast.makeText(this, "检查失败，请确认网络正常后重试", Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (update == null) {
+                Toast.makeText(this, "当前已经是最新版本", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            handleAvailableUpdate(update);
+        }));
+    }
+
+    private void handleAvailableUpdate(UpdateInfo update) {
+        if (!UpdatePreferences.autoDownload(this)) {
+            UpdateNotificationHelper.showAvailable(this, update);
+            new AlertDialog.Builder(this)
+                    .setTitle("发现新版本 " + update.version)
+                    .setMessage(update.notes.isEmpty() ? "可以前往 GitHub 下载新版。" : update.notes)
+                    .setNegativeButton("以后再说", null)
+                    .setPositiveButton("打开发布页", (dialog, which) ->
+                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(update.releaseUrl))))
+                    .show();
+            return;
+        }
+        try {
+            UpdateManager.download(this, update);
+            UpdateNotificationHelper.showDownloading(this, update.version);
+            Toast.makeText(this, "已开始下载版本 " + update.version, Toast.LENGTH_LONG).show();
+            render();
+        } catch (Exception error) {
+            Toast.makeText(this, "无法自动下载：" + error.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private View buildPersonCard(BirthdayPerson person) {
