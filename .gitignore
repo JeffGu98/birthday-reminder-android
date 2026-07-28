@@ -5,3 +5,6 @@ local.properties
 *.iml
 *.apk
 *.aab
+release-signing/
+*.jks
+*.keystore
