@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.text.InputType;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -66,10 +67,20 @@ public final class MainActivity extends Activity {
         scheduler = new ReminderScheduler(this);
         lunarService = new LunarCalendarService();
         NotificationHelper.createChannel(this);
-        UpdateNotificationHelper.createChannel(this);
-        UpdateManager.cleanupInstalledUpdate(this);
-        UpdateScheduler.schedule(this);
+        initializeUpdatesSafely();
         render();
+    }
+
+    private void initializeUpdatesSafely() {
+        try {
+            UpdateNotificationHelper.createChannel(this);
+            UpdateManager.cleanupInstalledUpdate(this);
+            UpdateScheduler.schedule(this);
+        } catch (RuntimeException error) {
+            // Updating is optional: vendor-specific scheduler/download service failures
+            // must never prevent the birthday reminder UI from opening.
+            Log.e("BirthdayUpdates", "Unable to initialize app updates", error);
+        }
     }
 
     @Override
