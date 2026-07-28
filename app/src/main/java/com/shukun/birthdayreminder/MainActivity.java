@@ -267,8 +267,7 @@ public final class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button edit = compactButton("修改");
-        edit.setTextColor(getColor(R.color.primary));
+        TextView edit = actionButton("修改");
         edit.setOnClickListener(view -> showPersonEditor(person));
         actions.addView(edit);
 
@@ -276,8 +275,7 @@ public final class MainActivity extends Activity {
         actions.addView(actionSpacer, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
-        Button delete = compactButton("删除");
-        delete.setTextColor(getColor(R.color.primary));
+        TextView delete = actionButton("删除");
         delete.setOnClickListener(view -> confirmDelete(person));
         actions.addView(delete);
         card.addView(actions, marginParams(0, 5, 0, 0));
@@ -489,6 +487,18 @@ public final class MainActivity extends Activity {
         button.setMinHeight(0);
         button.setMinimumHeight(0);
         button.setPadding(dp(12), dp(5), dp(12), dp(5));
+        return button;
+    }
+
+    private TextView actionButton(String label) {
+        TextView button = text(label, 14, getColor(R.color.primary), Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setBackgroundResource(R.drawable.bg_action_button);
+        button.setMinWidth(dp(96));
+        button.setMinHeight(dp(40));
+        button.setPadding(dp(18), dp(8), dp(18), dp(8));
+        button.setClickable(true);
+        button.setFocusable(true);
         return button;
     }
 
