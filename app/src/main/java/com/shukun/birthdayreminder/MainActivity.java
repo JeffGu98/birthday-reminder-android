@@ -30,6 +30,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.shukun.birthdayreminder.alarm.ReminderScheduler;
+import com.shukun.birthdayreminder.data.BirthdayBackupService;
 import com.shukun.birthdayreminder.data.BirthdayRepository;
 import com.shukun.birthdayreminder.lunar.LunarCalendarService;
 import com.shukun.birthdayreminder.lunar.LunarDate;
@@ -53,8 +54,11 @@ import java.util.UUID;
 
 public final class MainActivity extends Activity {
     private static final int REQUEST_NOTIFICATIONS = 1001;
+    private static final int REQUEST_EXPORT_BACKUP = 1002;
+    private static final int REQUEST_IMPORT_BACKUP = 1003;
 
     private BirthdayRepository repository;
+    private BirthdayBackupService backupService;
     private ReminderScheduler scheduler;
     private LunarCalendarService lunarService;
     private LinearLayout content;
@@ -66,6 +70,7 @@ public final class MainActivity extends Activity {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         repository = new BirthdayRepository(this);
+        backupService = new BirthdayBackupService();
         scheduler = new ReminderScheduler(this);
         lunarService = new LunarCalendarService();
         NotificationHelper.createChannel(this);
@@ -103,6 +108,18 @@ public final class MainActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQUEST_EXPORT_BACKUP) {
+            exportBackup(uri);
+        } else if (requestCode == REQUEST_IMPORT_BACKUP) {
+            importBackup(uri);
+        }
+    }
+
     private void render() {
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(true);
@@ -129,6 +146,8 @@ public final class MainActivity extends Activity {
         content.addView(buildPermissionCard(), marginParams(0, 0, 0, 18));
 
         content.addView(buildUpdateCard(), marginParams(0, 0, 0, 18));
+
+        content.addView(buildBackupCard(), marginParams(0, 0, 0, 18));
 
         Button addButton = new Button(this);
         addButton.setText("＋  添加生日");
@@ -278,6 +297,102 @@ public final class MainActivity extends Activity {
         }
         card.addView(action, wrapParams(Gravity.START));
         return card;
+    }
+
+    private View buildBackupCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setBackgroundResource(R.drawable.bg_card);
+
+        card.addView(text("本地备份", 15, getColor(R.color.text_primary), Typeface.BOLD));
+        TextView detail = text(
+                "生日默认保存在本机应用内。卸载前导出 JSON 备份；重装或换手机后可从该文件恢复。",
+                13, getColor(R.color.text_secondary), Typeface.NORMAL);
+        detail.setLineSpacing(0, 1.15f);
+        card.addView(detail, marginParams(0, 5, 0, 8));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button export = compactButton("导出备份");
+        export.setOnClickListener(view -> chooseBackupDestination());
+        actions.addView(export);
+
+        Button importButton = compactButton("导入备份");
+        importButton.setOnClickListener(view -> chooseBackupFile());
+        LinearLayout.LayoutParams importParams = wrapParams(Gravity.START);
+        importParams.leftMargin = dp(10);
+        actions.addView(importButton, importParams);
+        card.addView(actions);
+        return card;
+    }
+
+    private void chooseBackupDestination() {
+        Calendar now = Calendar.getInstance();
+        String fileName = String.format(Locale.CHINA,
+                "生日管家备份-%04d%02d%02d.json",
+                now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1,
+                now.get(Calendar.DAY_OF_MONTH));
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("application/json")
+                .putExtra(Intent.EXTRA_TITLE, fileName);
+        startActivityForResult(intent, REQUEST_EXPORT_BACKUP);
+    }
+
+    private void chooseBackupFile() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("*/*");
+        startActivityForResult(intent, REQUEST_IMPORT_BACKUP);
+    }
+
+    private void exportBackup(Uri destination) {
+        List<BirthdayPerson> snapshot = repository.getAll();
+        new Thread(() -> {
+            try {
+                backupService.write(this, destination, snapshot);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    Toast.makeText(this,
+                            "已导出 " + snapshot.size() + " 人，卸载后备份文件仍会保留",
+                            Toast.LENGTH_LONG).show();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    Toast.makeText(this,
+                            "导出失败：" + readableError(error), Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "birthday-backup-export").start();
+    }
+
+    private void importBackup(Uri source) {
+        new Thread(() -> {
+            try {
+                List<BirthdayBackupService.BackupPerson> people = backupService.read(this, source);
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (people.isEmpty()) {
+                        Toast.makeText(this, "备份文件中没有生日记录", Toast.LENGTH_LONG).show();
+                    } else {
+                        new ImportSession(people).continueImport();
+                    }
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    Toast.makeText(this,
+                            "导入失败：" + readableError(error), Toast.LENGTH_LONG).show();
+                });
+            }
+        }, "birthday-backup-import").start();
+    }
+
+    private String readableError(Exception error) {
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty() ? "文件无法处理" : message;
     }
 
     private void checkForUpdates(Button button) {
@@ -453,6 +568,125 @@ public final class MainActivity extends Activity {
             this.nextSolar = nextSolar;
             this.nextLunar = nextLunar;
             this.daysUntil = daysUntil;
+        }
+    }
+
+    private final class ImportSession {
+        private final List<BirthdayBackupService.BackupPerson> entries;
+        private int index;
+        private int imported;
+        private int skipped;
+
+        ImportSession(List<BirthdayBackupService.BackupPerson> entries) {
+            this.entries = entries;
+        }
+
+        void continueImport() {
+            while (index < entries.size()) {
+                BirthdayBackupService.BackupPerson incoming = entries.get(index++);
+                BirthdayPerson existing = repository.findByName(incoming.name);
+                if (existing == null) {
+                    saveIncoming(incoming, incoming.name, UUID.randomUUID().toString());
+                    imported++;
+                } else {
+                    showConflict(incoming, existing);
+                    return;
+                }
+            }
+            finishImport();
+        }
+
+        private void showConflict(BirthdayBackupService.BackupPerson incoming,
+                                  BirthdayPerson existing) {
+            String currentDate = String.format(Locale.CHINA, "%04d-%02d-%02d",
+                    existing.birthYear, existing.birthMonth, existing.birthDay);
+            String incomingDate = String.format(Locale.CHINA, "%04d-%02d-%02d",
+                    incoming.birthYear, incoming.birthMonth, incoming.birthDay);
+            AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("发现同名人员：“" + incoming.name + "”")
+                    .setMessage("现有生日：" + currentDate + "\n导入生日：" + incomingDate
+                            + "\n\n请选择如何处理这条记录。")
+                    .setPositiveButton("覆盖原记录", (ignored, which) -> {
+                        saveIncoming(incoming, existing.name, existing.id);
+                        imported++;
+                        continueImport();
+                    })
+                    .setNeutralButton("修改导入姓名", (ignored, which) ->
+                            showRenameDialog(incoming, existing))
+                    .setNegativeButton("跳过", (ignored, which) -> {
+                        skipped++;
+                        continueImport();
+                    })
+                    .create();
+            dialog.setOnCancelListener(ignored -> {
+                skipped++;
+                continueImport();
+            });
+            dialog.show();
+        }
+
+        private void showRenameDialog(BirthdayBackupService.BackupPerson incoming,
+                                      BirthdayPerson existing) {
+            EditText input = new EditText(MainActivity.this);
+            input.setSingleLine(true);
+            input.setText(incoming.name + "（导入）");
+            input.setSelectAllOnFocus(true);
+            int padding = dp(22);
+            input.setPadding(padding, dp(6), padding, 0);
+
+            AlertDialog renameDialog = new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("修改导入姓名")
+                    .setMessage("输入一个没有在当前列表中使用的姓名或称呼。")
+                    .setView(input)
+                    .setNegativeButton("返回", null)
+                    .setPositiveButton("确认导入", null)
+                    .create();
+            renameDialog.setOnShowListener(ignored -> {
+                renameDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+                    String renamed = input.getText().toString().trim();
+                    if (renamed.isEmpty()) {
+                        input.setError("请输入姓名或称呼");
+                        return;
+                    }
+                    if (renamed.length() > 80) {
+                        input.setError("姓名或称呼不能超过 80 个字符");
+                        return;
+                    }
+                    if (repository.findByName(renamed) != null) {
+                        input.setError("这个名字仍然已存在，请换一个名字");
+                        return;
+                    }
+                    saveIncoming(incoming, renamed, UUID.randomUUID().toString());
+                    imported++;
+                    renameDialog.dismiss();
+                    continueImport();
+                });
+                renameDialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(view -> {
+                    renameDialog.dismiss();
+                    showConflict(incoming, existing);
+                });
+            });
+            renameDialog.setOnCancelListener(ignored -> showConflict(incoming, existing));
+            renameDialog.show();
+        }
+
+        private void saveIncoming(BirthdayBackupService.BackupPerson incoming,
+                                  String name, String id) {
+            LunarDate lunar = lunarService.solarToLunar(
+                    incoming.birthYear, incoming.birthMonth, incoming.birthDay);
+            repository.upsert(new BirthdayPerson(
+                    id, name,
+                    incoming.birthYear, incoming.birthMonth, incoming.birthDay,
+                    lunar.month, lunar.day, lunar.leapMonth,
+                    incoming.enabled));
+        }
+
+        private void finishImport() {
+            render();
+            runInBackground(scheduler::rescheduleAll);
+            Toast.makeText(MainActivity.this,
+                    "导入完成：已导入或更新 " + imported + " 人，跳过 " + skipped + " 人",
+                    Toast.LENGTH_LONG).show();
         }
     }
 
