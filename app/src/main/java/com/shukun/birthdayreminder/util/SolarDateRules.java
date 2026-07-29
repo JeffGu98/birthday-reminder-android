@@ -28,4 +28,35 @@ public final class SolarDateRules {
         }
         return candidate;
     }
+
+    public static long justBeforeTodayMillis(long nowMillis) {
+        Calendar today = Calendar.getInstance();
+        today.setTimeInMillis(nowMillis);
+        today.set(Calendar.HOUR_OF_DAY, 0);
+        today.set(Calendar.MINUTE, 0);
+        today.set(Calendar.SECOND, 0);
+        today.set(Calendar.MILLISECOND, 0);
+        return today.getTimeInMillis() - 1L;
+    }
+
+    public static int daysUntil(SolarDate target, long nowMillis) {
+        Calendar cursor = Calendar.getInstance();
+        cursor.setTimeInMillis(nowMillis);
+        cursor.set(Calendar.HOUR_OF_DAY, 12);
+        cursor.set(Calendar.MINUTE, 0);
+        cursor.set(Calendar.SECOND, 0);
+        cursor.set(Calendar.MILLISECOND, 0);
+
+        Calendar targetDay = Calendar.getInstance();
+        targetDay.clear();
+        targetDay.set(target.year, target.month - 1, target.day, 12, 0, 0);
+        if (!cursor.before(targetDay)) return 0;
+
+        int days = 0;
+        while (cursor.before(targetDay)) {
+            cursor.add(Calendar.DAY_OF_MONTH, 1);
+            days++;
+        }
+        return days;
+    }
 }
