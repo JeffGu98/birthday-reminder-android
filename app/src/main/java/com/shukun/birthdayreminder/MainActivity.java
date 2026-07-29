@@ -44,7 +44,9 @@ import com.shukun.birthdayreminder.update.UpdateNotificationHelper;
 import com.shukun.birthdayreminder.update.UpdatePreferences;
 import com.shukun.birthdayreminder.update.UpdateScheduler;
 
+import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -140,6 +142,8 @@ public final class MainActivity extends Activity {
         content.addView(addButton, marginParams(0, 0, 0, 26));
 
         List<BirthdayPerson> people = repository.getAll();
+        List<PersonBirthdayStatus> birthdayStatuses = buildBirthdayStatuses(
+                people, System.currentTimeMillis());
         TextView section = text("生日列表  ·  " + people.size(), 18,
                 getColor(R.color.text_primary), Typeface.BOLD);
         content.addView(section, marginParams(0, 0, 0, 12));
@@ -147,8 +151,8 @@ public final class MainActivity extends Activity {
         if (people.isEmpty()) {
             content.addView(buildEmptyState(), marginParams(0, 0, 0, 18));
         } else {
-            for (BirthdayPerson person : people) {
-                content.addView(buildPersonCard(person), marginParams(0, 0, 0, 14));
+            for (PersonBirthdayStatus status : birthdayStatuses) {
+                content.addView(buildPersonCard(status), marginParams(0, 0, 0, 14));
             }
         }
 
@@ -317,7 +321,35 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private View buildPersonCard(BirthdayPerson person) {
+    private List<PersonBirthdayStatus> buildBirthdayStatuses(
+            List<BirthdayPerson> people, long nowMillis) {
+        long birthdayReference = SolarDateRules.justBeforeTodayMillis(nowMillis);
+        List<PersonBirthdayStatus> statuses = new ArrayList<>();
+        for (BirthdayPerson person : people) {
+            SolarDate nextSolar = SolarDateRules.nextBirthday(
+                    person.birthMonth, person.birthDay, birthdayReference);
+            SolarDate nextLunar = null;
+            try {
+                nextLunar = lunarService.nextLunarBirthday(
+                        new LunarDate(person.lunarMonth, person.lunarDay,
+                                person.lunarLeapMonth, 1), birthdayReference);
+            } catch (IllegalStateException ignored) {
+                // The solar birthday remains a reliable fallback for sorting and countdown.
+            }
+            SolarDate nearest = nextLunar != null && nextLunar.compareTo(nextSolar) < 0
+                    ? nextLunar : nextSolar;
+            statuses.add(new PersonBirthdayStatus(
+                    person, nextSolar, nextLunar,
+                    SolarDateRules.daysUntil(nearest, nowMillis)));
+        }
+        statuses.sort(Comparator
+                .comparingInt((PersonBirthdayStatus status) -> status.daysUntil)
+                .thenComparing(status -> status.person.name));
+        return statuses;
+    }
+
+    private View buildPersonCard(PersonBirthdayStatus status) {
+        BirthdayPerson person = status.person;
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setBackgroundResource(R.drawable.bg_card);
@@ -364,18 +396,13 @@ public final class MainActivity extends Activity {
         if (!person.enabled) {
             nextText = "提醒已暂停";
         } else {
-            long now = System.currentTimeMillis();
-            SolarDate nextSolar = SolarDateRules.nextBirthday(person.birthMonth, person.birthDay, now);
-            try {
-                SolarDate nextLunar = lunarService.nextLunarBirthday(
-                        new LunarDate(person.lunarMonth, person.lunarDay, person.lunarLeapMonth, 1), now);
-                if (nextSolar.equals(nextLunar)) {
-                    nextText = "下次提醒  " + nextSolar + "（双历同日）";
-                } else {
-                    nextText = "下次公历  " + nextSolar + "\n下次农历  " + nextLunar;
-                }
-            } catch (IllegalStateException error) {
-                nextText = "下次公历  " + nextSolar + "\n农历日期暂时无法计算";
+            if (status.nextLunar == null) {
+                nextText = "下次公历  " + status.nextSolar + "\n农历日期暂时无法计算";
+            } else if (status.nextSolar.equals(status.nextLunar)) {
+                nextText = "下次提醒  " + status.nextSolar + "（双历同日）";
+            } else {
+                nextText = "下次公历  " + status.nextSolar
+                        + "\n下次农历  " + status.nextLunar;
             }
         }
         TextView next = text(nextText, 13,
@@ -385,7 +412,7 @@ public final class MainActivity extends Activity {
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setGravity(Gravity.BOTTOM);
 
         TextView edit = actionButton("修改");
         edit.setOnClickListener(view -> showPersonEditor(person));
@@ -395,11 +422,38 @@ public final class MainActivity extends Activity {
         actions.addView(actionSpacer, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.MATCH_PARENT, 1));
 
+        LinearLayout deleteColumn = new LinearLayout(this);
+        deleteColumn.setOrientation(LinearLayout.VERTICAL);
+        deleteColumn.setGravity(Gravity.CENTER_HORIZONTAL);
+
+        String countdownText = status.daysUntil == 0
+                ? "今天生日"
+                : "距下次生日还有 " + status.daysUntil + " 天";
+        TextView countdown = text(countdownText, 12, getColor(R.color.primary), Typeface.BOLD);
+        countdown.setGravity(Gravity.CENTER);
+        deleteColumn.addView(countdown, marginParams(0, 0, 0, 3));
+
         TextView delete = actionButton("删除");
         delete.setOnClickListener(view -> confirmDelete(person));
-        actions.addView(delete);
+        deleteColumn.addView(delete);
+        actions.addView(deleteColumn);
         card.addView(actions, marginParams(0, 5, 0, 0));
         return card;
+    }
+
+    private static final class PersonBirthdayStatus {
+        final BirthdayPerson person;
+        final SolarDate nextSolar;
+        final SolarDate nextLunar;
+        final int daysUntil;
+
+        PersonBirthdayStatus(BirthdayPerson person, SolarDate nextSolar,
+                             SolarDate nextLunar, int daysUntil) {
+            this.person = person;
+            this.nextSolar = nextSolar;
+            this.nextLunar = nextLunar;
+            this.daysUntil = daysUntil;
+        }
     }
 
     private void showAddDialog() {
