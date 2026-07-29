@@ -51,6 +51,16 @@ public final class BirthdayRepository {
         return null;
     }
 
+    public synchronized BirthdayPerson findByName(String name) {
+        String expected = name == null ? "" : name.trim();
+        for (BirthdayPerson person : getAll()) {
+            if (person.name.trim().equalsIgnoreCase(expected)) {
+                return person;
+            }
+        }
+        return null;
+    }
+
     public synchronized void upsert(BirthdayPerson person) {
         List<BirthdayPerson> people = getAll();
         boolean replaced = false;
