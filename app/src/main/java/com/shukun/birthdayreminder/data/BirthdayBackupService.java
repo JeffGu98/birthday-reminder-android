@@ -22,20 +22,23 @@ public final class BirthdayBackupService {
     private static final String FORMAT = "birthday-reminder-backup";
     private static final int FORMAT_VERSION = 1;
     private static final int MAX_PEOPLE = 1_000;
-    private static final int MAX_FILE_BYTES = 2 * 1024 * 1024;
+    private static final int MAX_FILE_BYTES = 32 * 1024 * 1024;
 
     public static final class BackupPerson {
         public final String name;
         public final int birthYear;
         public final int birthMonth;
         public final int birthDay;
+        public final String note;
         public final boolean enabled;
 
-        BackupPerson(String name, int birthYear, int birthMonth, int birthDay, boolean enabled) {
+        BackupPerson(String name, int birthYear, int birthMonth, int birthDay,
+                     String note, boolean enabled) {
             this.name = name;
             this.birthYear = birthYear;
             this.birthMonth = birthMonth;
             this.birthDay = birthDay;
+            this.note = note;
             this.enabled = enabled;
         }
     }
@@ -78,6 +81,7 @@ public final class BirthdayBackupService {
             item.put("birthYear", person.birthYear);
             item.put("birthMonth", person.birthMonth);
             item.put("birthDay", person.birthDay);
+            item.put("note", person.note);
             item.put("enabled", person.enabled);
             array.put(item);
         }
@@ -103,18 +107,22 @@ public final class BirthdayBackupService {
             int year = item.getInt("birthYear");
             int month = item.getInt("birthMonth");
             int day = item.getInt("birthDay");
-            validate(name, year, month, day);
+            String note = item.optString("note", "");
+            validate(name, year, month, day, note);
             result.add(new BackupPerson(
-                    name, year, month, day, item.optBoolean("enabled", true)));
+                    name, year, month, day, note, item.optBoolean("enabled", true)));
         }
         return result;
     }
 
-    private void validate(String name, int year, int month, int day) {
+    private void validate(String name, int year, int month, int day, String note) {
         if (name.isEmpty() || name.length() > 80) {
             throw new IllegalArgumentException("备份中存在无效姓名");
         }
         if (year < 1901) throw new IllegalArgumentException("备份中存在过早的出生日期");
+        if (note.length() > BirthdayPerson.MAX_NOTE_LENGTH) {
+            throw new IllegalArgumentException("备份中存在过长的备注");
+        }
         Calendar date = new GregorianCalendar();
         date.setLenient(false);
         date.clear();
