@@ -4,6 +4,8 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public final class BirthdayPerson {
+    public static final int MAX_NOTE_LENGTH = 5_000;
+
     public final String id;
     public final String name;
     public final int birthYear;
@@ -12,6 +14,7 @@ public final class BirthdayPerson {
     public final int lunarMonth;
     public final int lunarDay;
     public final boolean lunarLeapMonth;
+    public final String note;
     public final boolean enabled;
 
     public BirthdayPerson(
@@ -23,6 +26,7 @@ public final class BirthdayPerson {
             int lunarMonth,
             int lunarDay,
             boolean lunarLeapMonth,
+            String note,
             boolean enabled
     ) {
         this.id = id;
@@ -33,12 +37,13 @@ public final class BirthdayPerson {
         this.lunarMonth = lunarMonth;
         this.lunarDay = lunarDay;
         this.lunarLeapMonth = lunarLeapMonth;
+        this.note = note == null ? "" : note;
         this.enabled = enabled;
     }
 
     public BirthdayPerson withEnabled(boolean newValue) {
         return new BirthdayPerson(id, name, birthYear, birthMonth, birthDay,
-                lunarMonth, lunarDay, lunarLeapMonth, newValue);
+                lunarMonth, lunarDay, lunarLeapMonth, note, newValue);
     }
 
     public JSONObject toJson() throws JSONException {
@@ -51,6 +56,7 @@ public final class BirthdayPerson {
         json.put("lunarMonth", lunarMonth);
         json.put("lunarDay", lunarDay);
         json.put("lunarLeapMonth", lunarLeapMonth);
+        json.put("note", note);
         json.put("enabled", enabled);
         return json;
     }
@@ -65,6 +71,7 @@ public final class BirthdayPerson {
                 json.getInt("lunarMonth"),
                 json.getInt("lunarDay"),
                 json.getBoolean("lunarLeapMonth"),
+                json.optString("note", ""),
                 json.optBoolean("enabled", true)
         );
     }

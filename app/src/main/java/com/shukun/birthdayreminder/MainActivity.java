@@ -13,6 +13,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.InputFilter;
 import android.text.InputType;
 import android.util.Log;
 import android.view.Gravity;
@@ -38,6 +39,7 @@ import com.shukun.birthdayreminder.model.BirthdayPerson;
 import com.shukun.birthdayreminder.notify.NotificationHelper;
 import com.shukun.birthdayreminder.util.SolarDate;
 import com.shukun.birthdayreminder.util.SolarDateRules;
+import com.shukun.birthdayreminder.util.NoteText;
 import com.shukun.birthdayreminder.update.UpdateInfo;
 import com.shukun.birthdayreminder.update.UpdateInstallerActivity;
 import com.shukun.birthdayreminder.update.UpdateManager;
@@ -499,6 +501,15 @@ public final class MainActivity extends Activity {
                 marginParams(0, 9, 0, 3));
         card.addView(text(lunarText, 14, getColor(R.color.text_secondary), Typeface.NORMAL));
 
+        if (!person.note.isEmpty()) {
+            TextView note = text("备注  " + NoteText.preview(person.note, 10) + "  ›", 13,
+                    getColor(R.color.primary), Typeface.BOLD);
+            note.setSingleLine(true);
+            note.setContentDescription("查看" + person.name + "的完整备注");
+            note.setOnClickListener(view -> showNoteDialog(person));
+            card.addView(note, marginParams(0, 9, 0, 0));
+        }
+
         View divider = new View(this);
         divider.setBackgroundColor(getColor(R.color.divider));
         LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
@@ -678,6 +689,7 @@ public final class MainActivity extends Activity {
                     id, name,
                     incoming.birthYear, incoming.birthMonth, incoming.birthDay,
                     lunar.month, lunar.day, lunar.leapMonth,
+                    incoming.note,
                     incoming.enabled));
         }
 
@@ -722,13 +734,34 @@ public final class MainActivity extends Activity {
         dateButton.setOnClickListener(view -> showDatePicker(dateButton, selected));
         form.addView(dateButton);
 
+        TextView noteLabel = text("备注（可选）", 13,
+                getColor(R.color.text_secondary), Typeface.BOLD);
+        form.addView(noteLabel, marginParams(0, 14, 0, 3));
+        EditText noteInput = new EditText(this);
+        noteInput.setHint("例如：喜欢的礼物、饮食偏好或其他信息");
+        noteInput.setGravity(Gravity.TOP | Gravity.START);
+        noteInput.setMinLines(3);
+        noteInput.setMaxLines(6);
+        noteInput.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        noteInput.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(BirthdayPerson.MAX_NOTE_LENGTH)});
+        if (editing) noteInput.setText(existing.note);
+        form.addView(noteInput, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         TextView hint = text("保存后会自动得到对应农历生日，并安排两套年度提醒。", 12,
                 getColor(R.color.text_secondary), Typeface.NORMAL);
         form.addView(hint, marginParams(0, 8, 0, 0));
 
+        ScrollView formScroll = new ScrollView(this);
+        formScroll.addView(form, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle(editing ? "修改生日" : "添加生日")
-                .setView(form)
+                .setView(formScroll)
                 .setNegativeButton("取消", null)
                 .setPositiveButton("保存", null)
                 .create();
@@ -750,6 +783,7 @@ public final class MainActivity extends Activity {
                             personName,
                             selected[0], selected[1], selected[2],
                             lunarDate.month, lunarDate.day, lunarDate.leapMonth,
+                            noteInput.getText().toString().trim(),
                             !editing || existing.enabled
                     );
                     repository.upsert(person);
@@ -763,6 +797,15 @@ public final class MainActivity extends Activity {
                     if (!editing) requestNotificationPermission();
                 }));
         dialog.show();
+    }
+
+    private void showNoteDialog(BirthdayPerson person) {
+        new AlertDialog.Builder(this)
+                .setTitle(person.name + "的备注")
+                .setMessage(person.note)
+                .setNegativeButton("关闭", null)
+                .setPositiveButton("修改", (dialog, which) -> showPersonEditor(person))
+                .show();
     }
 
     private void showDatePicker(Button dateButton, int[] selected) {
