@@ -46,6 +46,11 @@ public final class BirthdayPerson {
                 lunarMonth, lunarDay, lunarLeapMonth, note, newValue);
     }
 
+    public BirthdayPerson withNote(String newNote) {
+        return new BirthdayPerson(id, name, birthYear, birthMonth, birthDay,
+                lunarMonth, lunarDay, lunarLeapMonth, newNote, enabled);
+    }
+
     public JSONObject toJson() throws JSONException {
         JSONObject json = new JSONObject();
         json.put("id", id);

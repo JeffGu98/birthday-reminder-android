@@ -50,8 +50,10 @@ import com.shukun.birthdayreminder.update.UpdateScheduler;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 public final class MainActivity extends Activity {
@@ -64,6 +66,8 @@ public final class MainActivity extends Activity {
     private ReminderScheduler scheduler;
     private LunarCalendarService lunarService;
     private LinearLayout content;
+    private ScrollView pageScroll;
+    private final Map<String, View> personCards = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -123,14 +127,15 @@ public final class MainActivity extends Activity {
     }
 
     private void render() {
-        ScrollView scrollView = new ScrollView(this);
-        scrollView.setFillViewport(true);
-        scrollView.setClipToPadding(false);
+        pageScroll = new ScrollView(this);
+        pageScroll.setFillViewport(true);
+        pageScroll.setClipToPadding(false);
+        personCards.clear();
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(20), dp(28), dp(20), dp(36));
-        scrollView.addView(content, new ScrollView.LayoutParams(
+        pageScroll.addView(content, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView eyebrow = text("生日管家", 13, getColor(R.color.primary), Typeface.BOLD);
@@ -173,7 +178,9 @@ public final class MainActivity extends Activity {
             content.addView(buildEmptyState(), marginParams(0, 0, 0, 18));
         } else {
             for (PersonBirthdayStatus status : birthdayStatuses) {
-                content.addView(buildPersonCard(status), marginParams(0, 0, 0, 14));
+                View card = buildPersonCard(status);
+                personCards.put(status.person.id, card);
+                content.addView(card, marginParams(0, 0, 0, 14));
             }
         }
 
@@ -182,7 +189,7 @@ public final class MainActivity extends Activity {
         note.setLineSpacing(0, 1.2f);
         content.addView(note, marginParams(2, 8, 2, 0));
 
-        setContentView(scrollView);
+        setContentView(pageScroll);
     }
 
     private View buildPermissionCard() {
@@ -541,8 +548,18 @@ public final class MainActivity extends Activity {
         actions.setGravity(Gravity.BOTTOM);
 
         TextView edit = actionButton("修改");
+        edit.setMinWidth(dp(76));
         edit.setOnClickListener(view -> showPersonEditor(person));
         actions.addView(edit);
+
+        TextView editNote = actionButton("备注");
+        editNote.setMinWidth(dp(76));
+        editNote.setContentDescription((person.note.isEmpty() ? "添加" : "修改")
+                + person.name + "的备注");
+        editNote.setOnClickListener(view -> showNoteEditor(person));
+        LinearLayout.LayoutParams noteParams = wrapParams(Gravity.BOTTOM);
+        noteParams.leftMargin = dp(8);
+        actions.addView(editNote, noteParams);
 
         View actionSpacer = new View(this);
         actions.addView(actionSpacer, new LinearLayout.LayoutParams(
@@ -801,8 +818,56 @@ public final class MainActivity extends Activity {
                 .setTitle(person.name + "的备注")
                 .setMessage(person.note)
                 .setNegativeButton("关闭", null)
-                .setPositiveButton("修改", (dialog, which) -> showPersonEditor(person))
+                .setPositiveButton("修改备注", (dialog, which) -> showNoteEditor(person))
                 .show();
+    }
+
+    private void showNoteEditor(BirthdayPerson person) {
+        BirthdayPerson current = repository.findById(person.id);
+        if (current == null) return;
+
+        EditText input = new EditText(this);
+        input.setHint("输入备注内容");
+        input.setGravity(Gravity.TOP | Gravity.START);
+        input.setMinLines(4);
+        input.setMaxLines(8);
+        input.setInputType(InputType.TYPE_CLASS_TEXT
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        input.setFilters(new InputFilter[]{
+                new InputFilter.LengthFilter(BirthdayPerson.MAX_NOTE_LENGTH)});
+        input.setBackgroundResource(R.drawable.bg_card);
+        input.setText(current.note);
+        input.setSelection(input.length());
+
+        LinearLayout inputContainer = new LinearLayout(this);
+        inputContainer.setPadding(dp(20), dp(8), dp(20), 0);
+        inputContainer.addView(input, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        new AlertDialog.Builder(this)
+                .setTitle(current.note.isEmpty() ? "添加备注" : "修改备注")
+                .setView(inputContainer)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("保存", (dialog, which) -> {
+                    BirthdayPerson latest = repository.findById(current.id);
+                    if (latest == null) return;
+                    repository.upsert(latest.withNote(input.getText().toString().trim()));
+                    renderKeepingPersonVisible(latest.id);
+                    Toast.makeText(this, "备注已保存", Toast.LENGTH_SHORT).show();
+                })
+                .show();
+    }
+
+    private void renderKeepingPersonVisible(String personId) {
+        View oldCard = personCards.get(personId);
+        int viewportOffset = oldCard == null || pageScroll == null
+                ? 0 : oldCard.getTop() - pageScroll.getScrollY();
+        render();
+        View newCard = personCards.get(personId);
+        if (newCard == null || pageScroll == null) return;
+        pageScroll.post(() -> pageScroll.scrollTo(
+                0, Math.max(0, newCard.getTop() - viewportOffset)));
     }
 
     private void showDatePicker(Button dateButton, int[] selected) {
