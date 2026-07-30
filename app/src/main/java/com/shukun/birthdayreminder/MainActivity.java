@@ -739,12 +739,9 @@ public final class MainActivity extends Activity {
         form.addView(noteLabel, marginParams(0, 14, 0, 3));
         EditText noteInput = new EditText(this);
         noteInput.setHint("例如：喜欢的礼物、饮食偏好或其他信息");
-        noteInput.setGravity(Gravity.TOP | Gravity.START);
-        noteInput.setMinLines(3);
-        noteInput.setMaxLines(6);
+        noteInput.setSingleLine(true);
         noteInput.setInputType(InputType.TYPE_CLASS_TEXT
-                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-                | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+                | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         noteInput.setFilters(new InputFilter[]{
                 new InputFilter.LengthFilter(BirthdayPerson.MAX_NOTE_LENGTH)});
         if (editing) noteInput.setText(existing.note);
