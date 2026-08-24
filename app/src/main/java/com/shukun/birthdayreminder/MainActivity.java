@@ -39,6 +39,7 @@ import com.shukun.birthdayreminder.notify.NotificationHelper;
 import com.shukun.birthdayreminder.util.SolarDate;
 import com.shukun.birthdayreminder.util.SolarDateRules;
 import com.shukun.birthdayreminder.util.NoteText;
+import com.shukun.birthdayreminder.util.ZodiacSign;
 import com.shukun.birthdayreminder.ui.HomeCards;
 import com.shukun.birthdayreminder.ui.Views;
 import com.shukun.birthdayreminder.update.UpdateInfo;
@@ -385,8 +386,9 @@ public final class MainActivity extends Activity {
 
         LunarDate birthLunar = lunarService.solarToLunar(
                 person.birthYear, person.birthMonth, person.birthDay);
-        String solarText = String.format(Locale.CHINA, "公历  %04d年%02d月%02d日",
-                person.birthYear, person.birthMonth, person.birthDay);
+        String zodiac = ZodiacSign.signName(person.birthMonth, person.birthDay);
+        String solarText = String.format(Locale.CHINA, "公历  %04d年%02d月%02d日  ·  %s",
+                person.birthYear, person.birthMonth, person.birthDay, zodiac);
         String lunarText = "农历  " + lunarService.format(birthLunar, true);
         card.addView(Views.text(this,solarText, 14, getColor(R.color.text_secondary), Typeface.NORMAL),
                 Views.marginParams(this,0, 9, 0, 3));
