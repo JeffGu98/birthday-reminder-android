@@ -50,13 +50,10 @@ public final class SolarDateRules {
         Calendar targetDay = Calendar.getInstance();
         targetDay.clear();
         targetDay.set(target.year, target.month - 1, target.day, 12, 0, 0);
-        if (!cursor.before(targetDay)) return 0;
 
-        int days = 0;
-        while (cursor.before(targetDay)) {
-            cursor.add(Calendar.DAY_OF_MONTH, 1);
-            days++;
-        }
-        return days;
+        long diffMillis = targetDay.getTimeInMillis() - cursor.getTimeInMillis();
+        if (diffMillis <= 0) return 0;
+        // Rounding absorbs the ±1 hour daylight-saving shift that a whole-day division would truncate.
+        return (int) Math.round(diffMillis / 86_400_000.0);
     }
 }
