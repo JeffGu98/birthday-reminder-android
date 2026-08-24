@@ -18,13 +18,65 @@ public final class BirthdayRepository {
     private static final String KEY_PEOPLE = "people";
 
     private final SharedPreferences preferences;
+    private List<BirthdayPerson> cache;
 
     public BirthdayRepository(Context context) {
         preferences = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     public synchronized List<BirthdayPerson> getAll() {
-        String raw = preferences.getString(KEY_PEOPLE, "[]");
+        return new ArrayList<>(ensureLoaded());
+    }
+
+    public synchronized BirthdayPerson findById(String id) {
+        for (BirthdayPerson person : ensureLoaded()) {
+            if (person.id.equals(id)) {
+                return person;
+            }
+        }
+        return null;
+    }
+
+    public synchronized BirthdayPerson findByName(String name) {
+        String expected = name == null ? "" : name.trim();
+        for (BirthdayPerson person : ensureLoaded()) {
+            if (person.name.trim().equalsIgnoreCase(expected)) {
+                return person;
+            }
+        }
+        return null;
+    }
+
+    public synchronized void upsert(BirthdayPerson person) {
+        List<BirthdayPerson> people = ensureLoaded();
+        boolean replaced = false;
+        for (int index = 0; index < people.size(); index++) {
+            if (people.get(index).id.equals(person.id)) {
+                people.set(index, person);
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) {
+            people.add(person);
+        }
+        persist(people);
+    }
+
+    public synchronized void delete(String id) {
+        List<BirthdayPerson> people = ensureLoaded();
+        people.removeIf(person -> person.id.equals(id));
+        persist(people);
+    }
+
+    private List<BirthdayPerson> ensureLoaded() {
+        if (cache == null) {
+            cache = parse(preferences.getString(KEY_PEOPLE, "[]"));
+        }
+        return cache;
+    }
+
+    private List<BirthdayPerson> parse(String raw) {
         List<BirthdayPerson> result = new ArrayList<>();
         try {
             JSONArray array = new JSONArray(raw);
@@ -42,48 +94,8 @@ public final class BirthdayRepository {
         return result;
     }
 
-    public synchronized BirthdayPerson findById(String id) {
-        for (BirthdayPerson person : getAll()) {
-            if (person.id.equals(id)) {
-                return person;
-            }
-        }
-        return null;
-    }
-
-    public synchronized BirthdayPerson findByName(String name) {
-        String expected = name == null ? "" : name.trim();
-        for (BirthdayPerson person : getAll()) {
-            if (person.name.trim().equalsIgnoreCase(expected)) {
-                return person;
-            }
-        }
-        return null;
-    }
-
-    public synchronized void upsert(BirthdayPerson person) {
-        List<BirthdayPerson> people = getAll();
-        boolean replaced = false;
-        for (int index = 0; index < people.size(); index++) {
-            if (people.get(index).id.equals(person.id)) {
-                people.set(index, person);
-                replaced = true;
-                break;
-            }
-        }
-        if (!replaced) {
-            people.add(person);
-        }
-        persist(people);
-    }
-
-    public synchronized void delete(String id) {
-        List<BirthdayPerson> people = getAll();
-        people.removeIf(person -> person.id.equals(id));
-        persist(people);
-    }
-
     private void persist(List<BirthdayPerson> people) {
+        Collections.sort(people, Comparator.comparing(person -> person.name));
         JSONArray array = new JSONArray();
         for (BirthdayPerson person : people) {
             try {
@@ -93,5 +105,6 @@ public final class BirthdayRepository {
             }
         }
         preferences.edit().putString(KEY_PEOPLE, array.toString()).apply();
+        cache = people;
     }
 }

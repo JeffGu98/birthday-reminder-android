@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationManager;
-import android.app.DownloadManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -40,8 +39,9 @@ import com.shukun.birthdayreminder.notify.NotificationHelper;
 import com.shukun.birthdayreminder.util.SolarDate;
 import com.shukun.birthdayreminder.util.SolarDateRules;
 import com.shukun.birthdayreminder.util.NoteText;
+import com.shukun.birthdayreminder.ui.HomeCards;
+import com.shukun.birthdayreminder.ui.Views;
 import com.shukun.birthdayreminder.update.UpdateInfo;
-import com.shukun.birthdayreminder.update.UpdateInstallerActivity;
 import com.shukun.birthdayreminder.update.UpdateManager;
 import com.shukun.birthdayreminder.update.UpdateNotificationHelper;
 import com.shukun.birthdayreminder.update.UpdatePreferences;
@@ -50,10 +50,8 @@ import com.shukun.birthdayreminder.update.UpdateScheduler;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 public final class MainActivity extends Activity {
@@ -67,7 +65,16 @@ public final class MainActivity extends Activity {
     private LunarCalendarService lunarService;
     private LinearLayout content;
     private ScrollView pageScroll;
-    private final Map<String, View> personCards = new HashMap<>();
+    private final HomeCards.Listener homeCardsListener = new HomeCards.Listener() {
+        @Override public boolean hasNotificationPermission() { return MainActivity.this.hasNotificationPermission(); }
+        @Override public boolean canScheduleExact() { return scheduler.canScheduleExact(); }
+        @Override public void requestNotificationPermission() { MainActivity.this.requestNotificationPermission(); }
+        @Override public void openExactAlarmSettings() { MainActivity.this.openExactAlarmSettings(); }
+        @Override public void chooseBackupDestination() { MainActivity.this.chooseBackupDestination(); }
+        @Override public void chooseBackupFile() { MainActivity.this.chooseBackupFile(); }
+        @Override public void checkForUpdates(Button button) { MainActivity.this.checkForUpdates(button); }
+        @Override public void renderHome() { render(); }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,34 +134,35 @@ public final class MainActivity extends Activity {
     }
 
     private void render() {
+        int previousScroll = pageScroll != null ? pageScroll.getScrollY() : 0;
+
         pageScroll = new ScrollView(this);
         pageScroll.setFillViewport(true);
         pageScroll.setClipToPadding(false);
-        personCards.clear();
 
         content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(20), dp(28), dp(20), dp(36));
+        content.setPadding(Views.dp(this, 20), Views.dp(this, 28), Views.dp(this, 20), Views.dp(this, 36));
         pageScroll.addView(content, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView eyebrow = text("生日管家", 13, getColor(R.color.primary), Typeface.BOLD);
+        TextView eyebrow = Views.text(this, "生日管家", 13, getColor(R.color.primary), Typeface.BOLD);
         eyebrow.setLetterSpacing(0.16f);
         content.addView(eyebrow);
 
-        TextView title = text("双历生日提醒", 30, getColor(R.color.text_primary), Typeface.BOLD);
-        content.addView(title, marginParams(0, 4, 0, 6));
+        TextView title = Views.text(this, "双历生日提醒", 30, getColor(R.color.text_primary), Typeface.BOLD);
+        content.addView(title, Views.marginParams(this, 0, 4, 0, 6));
 
-        TextView subtitle = text("记住一个公历生日，同时守住每年的公历与农历那一天。", 15,
+        TextView subtitle = Views.text(this, "记住一个公历生日，同时守住每年的公历与农历那一天。", 15,
                 getColor(R.color.text_secondary), Typeface.NORMAL);
         subtitle.setLineSpacing(0, 1.18f);
-        content.addView(subtitle, marginParams(0, 0, 0, 20));
+        content.addView(subtitle, Views.marginParams(this, 0, 0, 0, 20));
 
-        content.addView(buildPermissionCard(), marginParams(0, 0, 0, 18));
+        content.addView(HomeCards.permissionCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
 
-        content.addView(buildUpdateCard(), marginParams(0, 0, 0, 18));
+        content.addView(HomeCards.updateCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
 
-        content.addView(buildBackupCard(), marginParams(0, 0, 0, 18));
+        content.addView(HomeCards.backupCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
 
         Button addButton = new Button(this);
         addButton.setText("＋  添加生日");
@@ -163,177 +171,53 @@ public final class MainActivity extends Activity {
         addButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         addButton.setTextColor(Color.WHITE);
         addButton.getBackground().setTint(getColor(R.color.primary));
-        addButton.setMinHeight(dp(54));
+        addButton.setMinHeight(Views.dp(this, 54));
         addButton.setOnClickListener(view -> showAddDialog());
-        content.addView(addButton, marginParams(0, 0, 0, 26));
+        content.addView(addButton, Views.marginParams(this, 0, 0, 0, 26));
 
         List<BirthdayPerson> people = repository.getAll();
         List<PersonBirthdayStatus> birthdayStatuses = buildBirthdayStatuses(
                 people, System.currentTimeMillis());
-        TextView section = text("生日列表  ·  " + people.size(), 18,
+        TextView section = Views.text(this, "生日列表  ·  " + people.size(), 18,
                 getColor(R.color.text_primary), Typeface.BOLD);
-        content.addView(section, marginParams(0, 0, 0, 12));
+        content.addView(section, Views.marginParams(this, 0, 0, 0, 12));
 
         if (people.isEmpty()) {
-            content.addView(buildEmptyState(), marginParams(0, 0, 0, 18));
+            content.addView(buildEmptyState(), Views.marginParams(this, 0, 0, 0, 18));
         } else {
             for (PersonBirthdayStatus status : birthdayStatuses) {
-                View card = buildPersonCard(status);
-                personCards.put(status.person.id, card);
-                content.addView(card, marginParams(0, 0, 0, 14));
+                content.addView(buildPersonCard(status), Views.marginParams(this, 0, 0, 0, 14));
             }
         }
 
-        TextView note = text("说明：提醒时间是设备所在时区的当天 00:00。2 月 29 日在非闰年按 2 月 28 日提醒；农历三十遇小月按廿九提醒。",
+        TextView note = Views.text(this, "说明：提醒时间是设备所在时区的当天 00:00。2 月 29 日在非闰年按 2 月 28 日提醒；农历三十遇小月按廿九提醒。",
                 12, getColor(R.color.text_secondary), Typeface.NORMAL);
         note.setLineSpacing(0, 1.2f);
-        content.addView(note, marginParams(2, 8, 2, 0));
+        content.addView(note, Views.marginParams(this, 2, 8, 2, 0));
 
         setContentView(pageScroll);
-    }
 
-    private View buildPermissionCard() {
-        boolean notificationReady = hasNotificationPermission();
-        boolean exactReady = scheduler.canScheduleExact();
-        boolean ready = notificationReady && exactReady;
-
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.setBackgroundResource(ready ? R.drawable.bg_permission_ok : R.drawable.bg_permission_warning);
-
-        String status = ready ? "提醒已就绪" : "需要完成提醒授权";
-        TextView heading = text((ready ? "✓  " : "!  ") + status, 15,
-                getColor(ready ? R.color.success : R.color.warning), Typeface.BOLD);
-        card.addView(heading);
-
-        String detail;
-        if (ready) {
-            detail = "通知和精确闹钟权限正常，将按 00:00 安排提醒。";
-        } else if (!notificationReady && !exactReady) {
-            detail = "还需要通知权限和“闹钟和提醒”权限。";
-        } else if (!notificationReady) {
-            detail = "还需要通知权限，否则提醒无法显示。";
-        } else {
-            detail = "还需要“闹钟和提醒”权限，才能尽量准时在 00:00 弹出。";
+        if (previousScroll > 0) {
+            pageScroll.post(() -> pageScroll.scrollTo(0, previousScroll));
         }
-        TextView body = text(detail, 13, getColor(R.color.text_secondary), Typeface.NORMAL);
-        body.setLineSpacing(0, 1.15f);
-        card.addView(body, marginParams(0, 5, 0, ready ? 0 : 8));
-
-        if (!notificationReady) {
-            Button button = compactButton("允许通知");
-            button.setOnClickListener(view -> requestNotificationPermission());
-            card.addView(button, wrapParams(Gravity.START));
-        }
-        if (!exactReady) {
-            Button button = compactButton("允许精确提醒");
-            button.setOnClickListener(view -> openExactAlarmSettings());
-            card.addView(button, wrapParams(Gravity.START));
-        }
-        return card;
     }
 
     private View buildEmptyState() {
         LinearLayout empty = new LinearLayout(this);
         empty.setOrientation(LinearLayout.VERTICAL);
         empty.setGravity(Gravity.CENTER);
-        empty.setPadding(dp(24), dp(34), dp(24), dp(34));
+        empty.setPadding(Views.dp(this,24), Views.dp(this,34), Views.dp(this,24), Views.dp(this,34));
         empty.setBackgroundResource(R.drawable.bg_card);
 
-        TextView cake = text("🎂", 38, getColor(R.color.text_primary), Typeface.NORMAL);
+        TextView cake = Views.text(this,"🎂", 38, getColor(R.color.text_primary), Typeface.NORMAL);
         empty.addView(cake);
-        TextView title = text("还没有生日", 17, getColor(R.color.text_primary), Typeface.BOLD);
-        empty.addView(title, marginParams(0, 8, 0, 4));
-        TextView body = text("添加一个人的姓名与公历出生日期，农历生日会自动换算。", 13,
+        TextView title = Views.text(this,"还没有生日", 17, getColor(R.color.text_primary), Typeface.BOLD);
+        empty.addView(title, Views.marginParams(this,0, 8, 0, 4));
+        TextView body = Views.text(this,"添加一个人的姓名与公历出生日期，农历生日会自动换算。", 13,
                 getColor(R.color.text_secondary), Typeface.NORMAL);
         body.setGravity(Gravity.CENTER);
         empty.addView(body);
         return empty;
-    }
-
-    private View buildUpdateCard() {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.setBackgroundResource(R.drawable.bg_card);
-
-        TextView heading = text("软件更新", 15, getColor(R.color.text_primary), Typeface.BOLD);
-        card.addView(heading);
-
-        long downloadId = UpdatePreferences.downloadId(this);
-        int status = UpdateManager.downloadStatus(this, downloadId);
-        boolean ready = status == DownloadManager.STATUS_SUCCESSFUL
-                && UpdatePreferences.isVerified(this);
-        String detail;
-        if (ready) {
-            detail = "版本 " + UpdatePreferences.downloadVersion(this) + " 已下载并通过安全校验。";
-        } else if (status == DownloadManager.STATUS_PENDING
-                || status == DownloadManager.STATUS_RUNNING) {
-            detail = "正在下载版本 " + UpdatePreferences.downloadVersion(this) + "。";
-        } else {
-            detail = "当前版本 " + BuildConfig.VERSION_NAME + "，每天自动检查 GitHub Releases。";
-        }
-        TextView body = text(detail, 13, getColor(R.color.text_secondary), Typeface.NORMAL);
-        card.addView(body, marginParams(0, 5, 0, 6));
-
-        Switch autoDownload = new Switch(this);
-        autoDownload.setText("发现新版后自动下载");
-        autoDownload.setTextColor(getColor(R.color.text_primary));
-        autoDownload.setChecked(UpdatePreferences.autoDownload(this));
-        autoDownload.setOnCheckedChangeListener((button, checked) -> {
-            UpdatePreferences.setAutoDownload(this, checked);
-            render();
-        });
-        card.addView(autoDownload);
-
-        Switch wifiOnly = new Switch(this);
-        wifiOnly.setText("仅在 Wi-Fi 下自动下载");
-        wifiOnly.setTextColor(getColor(R.color.text_primary));
-        wifiOnly.setChecked(UpdatePreferences.wifiOnly(this));
-        wifiOnly.setEnabled(UpdatePreferences.autoDownload(this));
-        wifiOnly.setOnCheckedChangeListener((button, checked) ->
-                UpdatePreferences.setWifiOnly(this, checked));
-        card.addView(wifiOnly);
-
-        Button action = compactButton(ready ? "安装已下载版本" : "立即检查更新");
-        if (ready) {
-            action.setOnClickListener(view -> startActivity(
-                    new Intent(this, UpdateInstallerActivity.class)
-                            .putExtra(UpdateInstallerActivity.EXTRA_DOWNLOAD_ID, downloadId)));
-        } else {
-            action.setOnClickListener(view -> checkForUpdates(action));
-        }
-        card.addView(action, wrapParams(Gravity.START));
-        return card;
-    }
-
-    private View buildBackupCard() {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        card.setBackgroundResource(R.drawable.bg_card);
-
-        card.addView(text("本地备份", 15, getColor(R.color.text_primary), Typeface.BOLD));
-        TextView detail = text(
-                "生日默认保存在本机应用内。卸载前导出 JSON 备份；重装或换手机后可从该文件恢复。",
-                13, getColor(R.color.text_secondary), Typeface.NORMAL);
-        detail.setLineSpacing(0, 1.15f);
-        card.addView(detail, marginParams(0, 5, 0, 8));
-
-        LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button export = compactButton("导出备份");
-        export.setOnClickListener(view -> chooseBackupDestination());
-        actions.addView(export);
-
-        Button importButton = compactButton("导入备份");
-        importButton.setOnClickListener(view -> chooseBackupFile());
-        LinearLayout.LayoutParams importParams = wrapParams(Gravity.START);
-        importParams.leftMargin = dp(10);
-        actions.addView(importButton, importParams);
-        card.addView(actions);
-        return card;
     }
 
     private void chooseBackupDestination() {
@@ -482,7 +366,7 @@ public final class MainActivity extends Activity {
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView name = text(person.name, 21, getColor(R.color.text_primary), Typeface.BOLD);
+        TextView name = Views.text(this,person.name, 21, getColor(R.color.text_primary), Typeface.BOLD);
         top.addView(name, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         Switch enabled = new Switch(this);
@@ -504,25 +388,25 @@ public final class MainActivity extends Activity {
         String solarText = String.format(Locale.CHINA, "公历  %04d年%02d月%02d日",
                 person.birthYear, person.birthMonth, person.birthDay);
         String lunarText = "农历  " + lunarService.format(birthLunar, true);
-        card.addView(text(solarText, 14, getColor(R.color.text_secondary), Typeface.NORMAL),
-                marginParams(0, 9, 0, 3));
-        card.addView(text(lunarText, 14, getColor(R.color.text_secondary), Typeface.NORMAL));
+        card.addView(Views.text(this,solarText, 14, getColor(R.color.text_secondary), Typeface.NORMAL),
+                Views.marginParams(this,0, 9, 0, 3));
+        card.addView(Views.text(this,lunarText, 14, getColor(R.color.text_secondary), Typeface.NORMAL));
 
         if (!person.note.isEmpty()) {
-            TextView note = text("备注  " + NoteText.preview(person.note, 10) + "  ›", 13,
+            TextView note = Views.text(this,"备注  " + NoteText.preview(person.note, 10) + "  ›", 13,
                     getColor(R.color.primary), Typeface.BOLD);
             note.setSingleLine(true);
             note.setContentDescription("查看" + person.name + "的完整备注");
             note.setOnClickListener(view -> showNoteDialog(person));
-            card.addView(note, marginParams(0, 9, 0, 0));
+            card.addView(note, Views.marginParams(this,0, 9, 0, 0));
         }
 
         View divider = new View(this);
         divider.setBackgroundColor(getColor(R.color.divider));
         LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(1));
-        dividerParams.topMargin = dp(14);
-        dividerParams.bottomMargin = dp(12);
+                ViewGroup.LayoutParams.MATCH_PARENT, Views.dp(this,1));
+        dividerParams.topMargin = Views.dp(this,14);
+        dividerParams.bottomMargin = Views.dp(this,12);
         card.addView(divider, dividerParams);
 
         String nextText;
@@ -538,7 +422,7 @@ public final class MainActivity extends Activity {
                         + "\n下次农历  " + status.nextLunar;
             }
         }
-        TextView next = text(nextText, 13,
+        TextView next = Views.text(this,nextText, 13,
                 getColor(person.enabled ? R.color.primary : R.color.text_secondary), Typeface.BOLD);
         next.setLineSpacing(0, 1.25f);
         card.addView(next);
@@ -547,18 +431,18 @@ public final class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.BOTTOM);
 
-        TextView edit = actionButton("修改");
-        edit.setMinWidth(dp(76));
+        TextView edit = Views.actionButton(this,"修改");
+        edit.setMinWidth(Views.dp(this,76));
         edit.setOnClickListener(view -> showPersonEditor(person));
         actions.addView(edit);
 
-        TextView editNote = actionButton("备注");
-        editNote.setMinWidth(dp(76));
+        TextView editNote = Views.actionButton(this,"备注");
+        editNote.setMinWidth(Views.dp(this,76));
         editNote.setContentDescription((person.note.isEmpty() ? "添加" : "修改")
                 + person.name + "的备注");
         editNote.setOnClickListener(view -> showNoteEditor(person));
-        LinearLayout.LayoutParams noteParams = wrapParams(Gravity.BOTTOM);
-        noteParams.leftMargin = dp(8);
+        LinearLayout.LayoutParams noteParams = Views.wrapParams(Gravity.BOTTOM);
+        noteParams.leftMargin = Views.dp(this,8);
         actions.addView(editNote, noteParams);
 
         View actionSpacer = new View(this);
@@ -572,15 +456,15 @@ public final class MainActivity extends Activity {
         String countdownText = status.daysUntil == 0
                 ? "今天生日"
                 : "距下次生日还有 " + status.daysUntil + " 天";
-        TextView countdown = text(countdownText, 12, getColor(R.color.primary), Typeface.BOLD);
+        TextView countdown = Views.text(this,countdownText, 12, getColor(R.color.primary), Typeface.BOLD);
         countdown.setGravity(Gravity.CENTER);
-        deleteColumn.addView(countdown, marginParams(0, 0, 0, 3));
+        deleteColumn.addView(countdown, Views.marginParams(this,0, 0, 0, 3));
 
-        TextView delete = actionButton("删除");
+        TextView delete = Views.actionButton(this,"删除");
         delete.setOnClickListener(view -> confirmDelete(person));
         deleteColumn.addView(delete);
         actions.addView(deleteColumn);
-        card.addView(actions, marginParams(0, 5, 0, 0));
+        card.addView(actions, Views.marginParams(this,0, 5, 0, 0));
         return card;
     }
 
@@ -659,8 +543,8 @@ public final class MainActivity extends Activity {
             input.setSingleLine(true);
             input.setText(incoming.name + "（导入）");
             input.setSelectAllOnFocus(true);
-            int padding = dp(22);
-            input.setPadding(padding, dp(6), padding, 0);
+            int padding = Views.dp(MainActivity.this, 22);
+            input.setPadding(padding, Views.dp(MainActivity.this, 6), padding, 0);
 
             AlertDialog renameDialog = new AlertDialog.Builder(MainActivity.this)
                     .setTitle("修改导入姓名")
@@ -727,9 +611,9 @@ public final class MainActivity extends Activity {
         boolean editing = existing != null;
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
-        form.setPadding(dp(24), dp(8), dp(24), 0);
+        form.setPadding(Views.dp(this,24), Views.dp(this,8), Views.dp(this,24), 0);
 
-        TextView nameLabel = text("姓名", 13, getColor(R.color.text_secondary), Typeface.BOLD);
+        TextView nameLabel = Views.text(this,"姓名", 13, getColor(R.color.text_secondary), Typeface.BOLD);
         form.addView(nameLabel);
         EditText nameInput = new EditText(this);
         nameInput.setHint("例如：妈妈");
@@ -739,8 +623,8 @@ public final class MainActivity extends Activity {
         form.addView(nameInput, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView dateLabel = text("公历出生日期", 13, getColor(R.color.text_secondary), Typeface.BOLD);
-        form.addView(dateLabel, marginParams(0, 14, 0, 3));
+        TextView dateLabel = Views.text(this,"公历出生日期", 13, getColor(R.color.text_secondary), Typeface.BOLD);
+        form.addView(dateLabel, Views.marginParams(this,0, 14, 0, 3));
 
         int[] selected = editing
                 ? new int[]{existing.birthYear, existing.birthMonth, existing.birthDay}
@@ -751,9 +635,9 @@ public final class MainActivity extends Activity {
         dateButton.setOnClickListener(view -> showDatePicker(dateButton, selected));
         form.addView(dateButton);
 
-        TextView noteLabel = text("备注（可选）", 13,
+        TextView noteLabel = Views.text(this,"备注（可选）", 13,
                 getColor(R.color.text_secondary), Typeface.BOLD);
-        form.addView(noteLabel, marginParams(0, 14, 0, 3));
+        form.addView(noteLabel, Views.marginParams(this,0, 14, 0, 3));
         EditText noteInput = new EditText(this);
         noteInput.setHint("例如：喜欢的礼物、饮食偏好或其他信息");
         noteInput.setSingleLine(true);
@@ -765,9 +649,9 @@ public final class MainActivity extends Activity {
         form.addView(noteInput, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        TextView hint = text("保存后会自动得到对应农历生日，并安排两套年度提醒。", 12,
+        TextView hint = Views.text(this,"保存后会自动得到对应农历生日，并安排两套年度提醒。", 12,
                 getColor(R.color.text_secondary), Typeface.NORMAL);
-        form.addView(hint, marginParams(0, 8, 0, 0));
+        form.addView(hint, Views.marginParams(this,0, 8, 0, 0));
 
         ScrollView formScroll = new ScrollView(this);
         formScroll.addView(form, new ScrollView.LayoutParams(
@@ -841,7 +725,7 @@ public final class MainActivity extends Activity {
         input.setSelection(input.length());
 
         LinearLayout inputContainer = new LinearLayout(this);
-        inputContainer.setPadding(dp(20), dp(8), dp(20), 0);
+        inputContainer.setPadding(Views.dp(this,20), Views.dp(this,8), Views.dp(this,20), 0);
         inputContainer.addView(input, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -853,32 +737,21 @@ public final class MainActivity extends Activity {
                     BirthdayPerson latest = repository.findById(current.id);
                     if (latest == null) return;
                     repository.upsert(latest.withNote(input.getText().toString().trim()));
-                    renderKeepingPersonVisible(latest.id);
+                    render();
                     Toast.makeText(this, "备注已保存", Toast.LENGTH_SHORT).show();
                 })
                 .show();
     }
 
-    private void renderKeepingPersonVisible(String personId) {
-        View oldCard = personCards.get(personId);
-        int viewportOffset = oldCard == null || pageScroll == null
-                ? 0 : oldCard.getTop() - pageScroll.getScrollY();
-        render();
-        View newCard = personCards.get(personId);
-        if (newCard == null || pageScroll == null) return;
-        pageScroll.post(() -> pageScroll.scrollTo(
-                0, Math.max(0, newCard.getTop() - viewportOffset)));
-    }
-
     private void showDatePicker(Button dateButton, int[] selected) {
         LinearLayout pickerContent = new LinearLayout(this);
         pickerContent.setOrientation(LinearLayout.VERTICAL);
-        pickerContent.setPadding(dp(20), dp(8), dp(20), 0);
+        pickerContent.setPadding(Views.dp(this,20), Views.dp(this,8), Views.dp(this,20), 0);
 
-        TextView lunarPreview = text("", 16, getColor(R.color.primary), Typeface.BOLD);
+        TextView lunarPreview = Views.text(this,"", 16, getColor(R.color.primary), Typeface.BOLD);
         lunarPreview.setGravity(Gravity.CENTER);
         lunarPreview.setLineSpacing(0, 1.18f);
-        pickerContent.addView(lunarPreview, marginParams(0, 0, 0, 8));
+        pickerContent.addView(lunarPreview, Views.marginParams(this,0, 0, 0, 8));
 
         DatePicker picker = new DatePicker(this);
         Calendar minimum = Calendar.getInstance();
@@ -983,57 +856,7 @@ public final class MainActivity extends Activity {
         return chosen.after(today);
     }
 
-    private TextView text(String value, int sp, int color, int style) {
-        TextView view = new TextView(this);
-        view.setText(value);
-        view.setTextSize(sp);
-        view.setTextColor(color);
-        view.setTypeface(Typeface.DEFAULT, style);
-        return view;
-    }
-
-    private Button compactButton(String label) {
-        Button button = new Button(this);
-        button.setText(label);
-        button.setTextSize(13);
-        button.setAllCaps(false);
-        button.setMinHeight(0);
-        button.setMinimumHeight(0);
-        button.setPadding(dp(12), dp(5), dp(12), dp(5));
-        return button;
-    }
-
-    private TextView actionButton(String label) {
-        TextView button = text(label, 14, getColor(R.color.primary), Typeface.BOLD);
-        button.setGravity(Gravity.CENTER);
-        button.setBackgroundResource(R.drawable.bg_action_button);
-        button.setMinWidth(dp(96));
-        button.setMinHeight(dp(40));
-        button.setPadding(dp(18), dp(8), dp(18), dp(8));
-        button.setClickable(true);
-        button.setFocusable(true);
-        return button;
-    }
-
-    private LinearLayout.LayoutParams marginParams(int left, int top, int right, int bottom) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.setMargins(dp(left), dp(top), dp(right), dp(bottom));
-        return params;
-    }
-
-    private LinearLayout.LayoutParams wrapParams(int gravity) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.gravity = gravity;
-        return params;
-    }
-
     private void runInBackground(Runnable runnable) {
         new Thread(runnable, "birthday-scheduler").start();
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 }

@@ -39,7 +39,11 @@ public final class ReminderScheduler {
     public void rescheduleAll() {
         List<BirthdayPerson> people = new BirthdayRepository(context).getAll();
         for (BirthdayPerson person : people) {
-            schedulePerson(person);
+            try {
+                schedulePerson(person);
+            } catch (RuntimeException error) {
+                // One broken entry must not stop the remaining reminders from being scheduled.
+            }
         }
     }
 
@@ -49,11 +53,18 @@ public final class ReminderScheduler {
 
         long now = System.currentTimeMillis();
         SolarDate solarDate = SolarDateRules.nextBirthday(person.birthMonth, person.birthDay, now);
-        LunarDate lunarBirthday = new LunarDate(
-                person.lunarMonth, person.lunarDay, person.lunarLeapMonth, 1);
-        SolarDate lunarDate = lunarService.nextLunarBirthday(lunarBirthday, now);
+        SolarDate lunarDate = null;
+        try {
+            LunarDate lunarBirthday = new LunarDate(
+                    person.lunarMonth, person.lunarDay, person.lunarLeapMonth, 1);
+            lunarDate = lunarService.nextLunarBirthday(lunarBirthday, now);
+        } catch (IllegalStateException error) {
+            // Unresolvable lunar data falls back to a solar-only reminder.
+        }
 
-        if (solarDate.equals(lunarDate)) {
+        if (lunarDate == null) {
+            schedule(person.id, KIND_SOLAR, solarDate.atLocalMidnightMillis());
+        } else if (solarDate.equals(lunarDate)) {
             schedule(person.id, KIND_BOTH, solarDate.atLocalMidnightMillis());
         } else {
             schedule(person.id, KIND_SOLAR, solarDate.atLocalMidnightMillis());
