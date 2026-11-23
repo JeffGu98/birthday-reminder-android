@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationManager;
+import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -32,6 +33,7 @@ import android.widget.Toast;
 import com.shukun.birthdayreminder.alarm.ReminderScheduler;
 import com.shukun.birthdayreminder.data.BirthdayBackupService;
 import com.shukun.birthdayreminder.data.BirthdayRepository;
+import com.shukun.birthdayreminder.data.ReminderPreferences;
 import com.shukun.birthdayreminder.lunar.LunarCalendarService;
 import com.shukun.birthdayreminder.lunar.LunarDate;
 import com.shukun.birthdayreminder.model.BirthdayPerson;
@@ -39,6 +41,7 @@ import com.shukun.birthdayreminder.notify.NotificationHelper;
 import com.shukun.birthdayreminder.util.SolarDate;
 import com.shukun.birthdayreminder.util.SolarDateRules;
 import com.shukun.birthdayreminder.util.NoteText;
+import com.shukun.birthdayreminder.util.ReminderTime;
 import com.shukun.birthdayreminder.util.ZodiacSign;
 import com.shukun.birthdayreminder.ui.HomeCards;
 import com.shukun.birthdayreminder.ui.Views;
@@ -75,6 +78,9 @@ public final class MainActivity extends Activity {
         @Override public void chooseBackupFile() { MainActivity.this.chooseBackupFile(); }
         @Override public void checkForUpdates(Button button) { MainActivity.this.checkForUpdates(button); }
         @Override public void renderHome() { render(); }
+        @Override public ReminderTime reminderTime() { return ReminderPreferences.get(MainActivity.this); }
+        @Override public void chooseReminderTime() { MainActivity.this.chooseReminderTime(); }
+        @Override public void openAppSettings() { MainActivity.this.openAppSettings(); }
     };
 
     @Override
@@ -161,6 +167,8 @@ public final class MainActivity extends Activity {
 
         content.addView(HomeCards.permissionCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
 
+        content.addView(HomeCards.reminderTimeCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
+
         content.addView(HomeCards.updateCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
 
         content.addView(HomeCards.backupCard(this, homeCardsListener), Views.marginParams(this, 0, 0, 0, 18));
@@ -191,7 +199,10 @@ public final class MainActivity extends Activity {
             }
         }
 
-        TextView note = Views.text(this, "说明：提醒时间是设备所在时区的当天 00:00。2 月 29 日在非闰年按 2 月 28 日提醒；农历三十遇小月按廿九提醒。",
+        ReminderTime reminderTime = ReminderPreferences.get(this);
+        TextView note = Views.text(this, "说明：提醒时间是设备所在时区的当天 "
+                        + reminderTime.format()
+                        + "。2 月 29 日在非闰年按 2 月 28 日提醒；农历三十遇小月按廿九提醒。",
                 12, getColor(R.color.text_secondary), Typeface.NORMAL);
         note.setLineSpacing(0, 1.2f);
         content.addView(note, Views.marginParams(this, 2, 8, 2, 0));
@@ -411,17 +422,18 @@ public final class MainActivity extends Activity {
         dividerParams.bottomMargin = Views.dp(this,12);
         card.addView(divider, dividerParams);
 
+        String timeLabel = "  " + ReminderPreferences.get(this).format();
         String nextText;
         if (!person.enabled) {
             nextText = "提醒已暂停";
         } else {
             if (status.nextLunar == null) {
-                nextText = "下次公历  " + status.nextSolar + "\n农历日期暂时无法计算";
+                nextText = "下次公历  " + status.nextSolar + timeLabel + "\n农历日期暂时无法计算";
             } else if (status.nextSolar.equals(status.nextLunar)) {
-                nextText = "下次提醒  " + status.nextSolar + "（双历同日）";
+                nextText = "下次提醒  " + status.nextSolar + timeLabel + "（双历同日）";
             } else {
-                nextText = "下次公历  " + status.nextSolar
-                        + "\n下次农历  " + status.nextLunar;
+                nextText = "下次公历  " + status.nextSolar + timeLabel
+                        + "\n下次农历  " + status.nextLunar + timeLabel;
             }
         }
         TextView next = Views.text(this,nextText, 13,
@@ -831,6 +843,28 @@ public final class MainActivity extends Activity {
                 intent.setData(Uri.parse("package:" + getPackageName()));
             }
             startActivity(intent);
+        }
+    }
+
+    private void chooseReminderTime() {
+        ReminderTime current = ReminderPreferences.get(this);
+        boolean is24Hour = android.text.format.DateFormat.is24HourFormat(this);
+        new TimePickerDialog(this, (view, hourOfDay, minute) -> {
+            ReminderTime selected = new ReminderTime(hourOfDay, minute);
+            ReminderPreferences.set(this, selected);
+            render();
+            runInBackground(scheduler::rescheduleAll);
+            Toast.makeText(this, "已改为每天 " + selected.format() + " 提醒", Toast.LENGTH_SHORT).show();
+        }, current.hour, current.minute, is24Hour).show();
+    }
+
+    private void openAppSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        intent.setData(Uri.parse("package:" + getPackageName()));
+        try {
+            startActivity(intent);
+        } catch (Exception error) {
+            Toast.makeText(this, "无法打开应用设置", Toast.LENGTH_SHORT).show();
         }
     }
 

@@ -8,9 +8,11 @@ import android.net.Uri;
 import android.os.Build;
 
 import com.shukun.birthdayreminder.data.BirthdayRepository;
+import com.shukun.birthdayreminder.data.ReminderPreferences;
 import com.shukun.birthdayreminder.lunar.LunarCalendarService;
 import com.shukun.birthdayreminder.lunar.LunarDate;
 import com.shukun.birthdayreminder.model.BirthdayPerson;
+import com.shukun.birthdayreminder.util.ReminderTime;
 import com.shukun.birthdayreminder.util.SolarDate;
 import com.shukun.birthdayreminder.util.SolarDateRules;
 
@@ -51,24 +53,31 @@ public final class ReminderScheduler {
         cancelPerson(person.id);
         if (!person.enabled) return;
 
+        ReminderTime reminderTime = ReminderPreferences.get(context);
         long now = System.currentTimeMillis();
-        SolarDate solarDate = SolarDateRules.nextBirthday(person.birthMonth, person.birthDay, now);
+        SolarDate solarDate = SolarDateRules.nextBirthday(
+                person.birthMonth, person.birthDay, now, reminderTime.hour, reminderTime.minute);
         SolarDate lunarDate = null;
         try {
             LunarDate lunarBirthday = new LunarDate(
                     person.lunarMonth, person.lunarDay, person.lunarLeapMonth, 1);
-            lunarDate = lunarService.nextLunarBirthday(lunarBirthday, now);
+            lunarDate = lunarService.nextLunarBirthday(
+                    lunarBirthday, now, reminderTime.hour, reminderTime.minute);
         } catch (IllegalStateException error) {
             // Unresolvable lunar data falls back to a solar-only reminder.
         }
 
         if (lunarDate == null) {
-            schedule(person.id, KIND_SOLAR, solarDate.atLocalMidnightMillis());
+            schedule(person.id, KIND_SOLAR, solarDate.atLocalTimeMillis(
+                    reminderTime.hour, reminderTime.minute));
         } else if (solarDate.equals(lunarDate)) {
-            schedule(person.id, KIND_BOTH, solarDate.atLocalMidnightMillis());
+            schedule(person.id, KIND_BOTH, solarDate.atLocalTimeMillis(
+                    reminderTime.hour, reminderTime.minute));
         } else {
-            schedule(person.id, KIND_SOLAR, solarDate.atLocalMidnightMillis());
-            schedule(person.id, KIND_LUNAR, lunarDate.atLocalMidnightMillis());
+            schedule(person.id, KIND_SOLAR, solarDate.atLocalTimeMillis(
+                    reminderTime.hour, reminderTime.minute));
+            schedule(person.id, KIND_LUNAR, lunarDate.atLocalTimeMillis(
+                    reminderTime.hour, reminderTime.minute));
         }
     }
 

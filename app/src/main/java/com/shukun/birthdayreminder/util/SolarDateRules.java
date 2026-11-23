@@ -19,11 +19,16 @@ public final class SolarDateRules {
     }
 
     public static SolarDate nextBirthday(int birthMonth, int birthDay, long nowMillis) {
+        return nextBirthday(birthMonth, birthDay, nowMillis, 0, 0);
+    }
+
+    public static SolarDate nextBirthday(int birthMonth, int birthDay, long nowMillis,
+                                         int hour, int minute) {
         Calendar now = Calendar.getInstance();
         now.setTimeInMillis(nowMillis);
         int year = now.get(Calendar.YEAR);
         SolarDate candidate = birthdayInYear(year, birthMonth, birthDay);
-        if (candidate.atLocalMidnightMillis() <= nowMillis) {
+        if (candidate.atLocalTimeMillis(hour, minute) <= nowMillis) {
             candidate = birthdayInYear(year + 1, birthMonth, birthDay);
         }
         return candidate;

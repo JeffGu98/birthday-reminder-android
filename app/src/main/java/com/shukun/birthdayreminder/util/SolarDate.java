@@ -15,9 +15,14 @@ public final class SolarDate implements Comparable<SolarDate> {
     }
 
     public long atLocalMidnightMillis() {
+        return atLocalTimeMillis(0, 0);
+    }
+
+    public long atLocalTimeMillis(int hour, int minute) {
         Calendar calendar = Calendar.getInstance();
         calendar.clear();
-        calendar.set(year, month - 1, day, 0, 0, 0);
+        calendar.set(year, month - 1, day, hour, minute, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
         return calendar.getTimeInMillis();
     }
 

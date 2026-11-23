@@ -38,4 +38,25 @@ public class SolarDateRulesTest {
         assertEquals(184, SolarDateRules.daysUntil(
                 new SolarDate(2027, 1, 29), now.getTimeInMillis()));
     }
+
+    @Test
+    public void upcomingReminderTimeKeepsToday() {
+        Calendar now = new GregorianCalendar(2026, Calendar.JULY, 28, 8, 0, 0);
+        assertEquals(new SolarDate(2026, 7, 28),
+                SolarDateRules.nextBirthday(7, 28, now.getTimeInMillis(), 9, 0));
+    }
+
+    @Test
+    public void passedReminderTimeMovesToNextYear() {
+        Calendar now = new GregorianCalendar(2026, Calendar.JULY, 28, 9, 0, 0);
+        assertEquals(new SolarDate(2027, 7, 28),
+                SolarDateRules.nextBirthday(7, 28, now.getTimeInMillis(), 9, 0));
+    }
+
+    @Test
+    public void reminderTimeExactlyNowIsAlreadyPassed() {
+        Calendar now = new GregorianCalendar(2026, Calendar.JANUARY, 1, 0, 0, 0);
+        assertEquals(new SolarDate(2027, 1, 1),
+                SolarDateRules.nextBirthday(1, 1, now.getTimeInMillis(), 0, 0));
+    }
 }
