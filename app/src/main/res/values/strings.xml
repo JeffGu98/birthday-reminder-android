@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">双历生日提醒</string>
     <string name="notification_channel_name">生日提醒</string>
-    <string name="notification_channel_description">在公历和农历生日当天 00:00 提醒</string>
+    <string name="notification_channel_description">在公历和农历生日当天的设定时间提醒</string>
 </resources>

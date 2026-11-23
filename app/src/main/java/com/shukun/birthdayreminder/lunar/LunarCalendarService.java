@@ -43,12 +43,16 @@ public final class LunarCalendarService {
     }
 
     public SolarDate nextLunarBirthday(LunarDate birthday, long nowMillis) {
+        return nextLunarBirthday(birthday, nowMillis, 0, 0);
+    }
+
+    public SolarDate nextLunarBirthday(LunarDate birthday, long nowMillis, int hour, int minute) {
         java.util.Calendar now = java.util.Calendar.getInstance();
         now.setTimeInMillis(nowMillis);
         int startYear = now.get(java.util.Calendar.YEAR);
         for (int year = startYear; year <= startYear + 3; year++) {
             SolarDate candidate = occurrenceInGregorianYear(birthday, year);
-            if (candidate != null && candidate.atLocalMidnightMillis() > nowMillis) {
+            if (candidate != null && candidate.atLocalTimeMillis(hour, minute) > nowMillis) {
                 return candidate;
             }
         }

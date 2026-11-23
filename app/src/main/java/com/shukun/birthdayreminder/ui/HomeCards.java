@@ -18,6 +18,7 @@ import com.shukun.birthdayreminder.R;
 import com.shukun.birthdayreminder.update.UpdateInstallerActivity;
 import com.shukun.birthdayreminder.update.UpdateManager;
 import com.shukun.birthdayreminder.update.UpdatePreferences;
+import com.shukun.birthdayreminder.util.ReminderTime;
 
 public final class HomeCards {
     public interface Listener {
@@ -29,6 +30,9 @@ public final class HomeCards {
         void chooseBackupFile();
         void checkForUpdates(Button button);
         void renderHome();
+        ReminderTime reminderTime();
+        void chooseReminderTime();
+        void openAppSettings();
     }
 
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
@@ -51,14 +55,15 @@ public final class HomeCards {
         card.addView(heading);
 
         String detail;
+        String reminderClock = listener.reminderTime().format();
         if (ready) {
-            detail = "通知和精确闹钟权限正常，将按 00:00 安排提醒。";
+            detail = "通知和精确闹钟权限正常，将按当天 " + reminderClock + " 安排提醒。";
         } else if (!notificationReady && !exactReady) {
             detail = "还需要通知权限和“闹钟和提醒”权限。";
         } else if (!notificationReady) {
             detail = "还需要通知权限，否则提醒无法显示。";
         } else {
-            detail = "还需要“闹钟和提醒”权限，才能尽量准时在 00:00 弹出。";
+            detail = "还需要“闹钟和提醒”权限，才能尽量准时在 " + reminderClock + " 弹出。";
         }
         TextView body = Views.text(context, detail, 13, context.getColor(R.color.text_secondary), Typeface.NORMAL);
         body.setLineSpacing(0, 1.15f);
@@ -74,6 +79,49 @@ public final class HomeCards {
             button.setOnClickListener(view -> listener.openExactAlarmSettings());
             card.addView(button, Views.wrapParams(Gravity.START));
         }
+        return card;
+    }
+
+    public static View reminderTimeCard(Context context, Listener listener) {
+        ReminderTime time = listener.reminderTime();
+        LinearLayout card = new LinearLayout(context);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(Views.dp(context, 16), Views.dp(context, 14), Views.dp(context, 16), Views.dp(context, 14));
+        card.setBackgroundResource(R.drawable.bg_card);
+
+        card.addView(Views.text(context, "提醒时间", 15, context.getColor(R.color.text_primary), Typeface.BOLD));
+
+        TextView clock = Views.text(context, time.format(), 28, context.getColor(R.color.primary), Typeface.BOLD);
+        clock.setContentDescription("当前提醒时间 " + time.format() + "，点击修改");
+        card.addView(clock, Views.marginParams(context, 0, 6, 0, 4));
+
+        String detail = "公历和农历生日当天，都会在此时弹出通知。";
+        if (time.isEarlyMorning()) {
+            detail += "凌晨的提醒容易被睡过，建议改到白天。";
+        }
+        TextView body = Views.text(context, detail, 13, context.getColor(R.color.text_secondary), Typeface.NORMAL);
+        body.setLineSpacing(0, 1.15f);
+        card.addView(body, Views.marginParams(context, 0, 0, 0, 8));
+
+        LinearLayout actions = new LinearLayout(context);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+
+        Button change = Views.compactButton(context, "修改提醒时间");
+        change.setOnClickListener(view -> listener.chooseReminderTime());
+        actions.addView(change);
+
+        Button settings = Views.compactButton(context, "应用设置");
+        settings.setOnClickListener(view -> listener.openAppSettings());
+        LinearLayout.LayoutParams settingsParams = Views.wrapParams(Gravity.START);
+        settingsParams.leftMargin = Views.dp(context, 10);
+        actions.addView(settings, settingsParams);
+        card.addView(actions);
+
+        TextView hint = Views.text(context,
+                "若提醒经常不准时，请在系统设置中允许本应用自启动，并不要限制后台运行。",
+                12, context.getColor(R.color.text_secondary), Typeface.NORMAL);
+        hint.setLineSpacing(0, 1.15f);
+        card.addView(hint, Views.marginParams(context, 0, 8, 0, 0));
         return card;
     }
 
